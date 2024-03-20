@@ -14,8 +14,8 @@ With the vision to revolutionize Lumaria's life insurance landscape, SuperLife w
 
 **Modeling and Pricing:**
 
-Mortality Table: 
+Mortality Table: CoxPHModel2.Rmd (uses SuperLife_Inforce.csv and Lumaria_Mortality_Table.csv)
 
 Interest Rate: Short Rate Model.Rmd
 
-Premium Calculation: Short Rate Model.Rmd
+Premium/EPV Benefits/Costs/Rebates/Profit Calculation: Short Rate Model.Rmd, PremiumCalculation (uses SuperLife_Inforce.csv and full_mortality_table.xlsx)
