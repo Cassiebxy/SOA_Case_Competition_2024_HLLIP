@@ -1,0 +1,483 @@
+---
+title: "Cox Proportional Hazards Model - File 2"
+author: "Sarah Kircher"
+date: "3/3/2024"
+output: html_notebook
+---
+
+```{r}
+rm(list = ls())
+library(survival)
+library(survminer)
+library(dplyr)
+library(ggplot2)
+library(car)
+library(tidyverse)
+library(gtsummary)
+library(readxl)
+library(writexl)
+```
+
+```{r}
+# Read in data
+superlife_inforce <- read.csv("/Users/sarahkircher/Documents/2024 SOA Case Comp/SOACaseComp2024/SuperLife_Inforce.csv", header = T)
+general_mortality_table <- read_excel("/Users/sarahkircher/Documents/2024 SOA Case Comp/SOACaseComp2024/Lumaria_Mortality_Table.xlsx")
+
+# Make columns for entry_time, exit_time, event
+# Make indicator variables for male, smoker, and uw risk value
+new_inforce <- superlife_inforce %>%
+  select(Issue.year, Issue.age, Sex, Smoker.Status, Underwriting.Class, Death.indicator, Year.of.Death, Lapse.Indicator, Year.of.Lapse)
+
+new_inforce2 <- replace(new_inforce, is.na(new_inforce), 0)
+
+new_inforce2 <- new_inforce2 %>%
+  mutate(entry_time = Issue.year) %>%
+  mutate(exit_time = ifelse(Death.indicator == 1, Year.of.Death,
+                            ifelse(Lapse.Indicator == 1, Year.of.Lapse, 2024))) %>%
+  mutate(age = Issue.age) %>%
+  mutate(time_in_days = (exit_time - entry_time) * 365) %>%
+  mutate(event = ifelse(Death.indicator == 1, 1, 0)) %>%
+  mutate(male = ifelse(Sex == "M", 1, 0)) %>%
+  mutate(smoker = ifelse(Smoker.Status == "S", 1, 0)) %>%
+  mutate(risk = ifelse(Underwriting.Class == "very low risk" | Underwriting.Class == "low risk", 0, 1))
+                            
+final_inforce <- new_inforce2 %>%
+  select(time_in_days, event, age, male, smoker, risk)
+```
+
+```{r}
+cox_model <- coxph(Surv(time_in_days, event) ~ age + male + smoker + risk, data = final_inforce)
+
+summary(cox_model)
+
+cox_model %>% 
+  tbl_regression(exp = TRUE) 
+```
+
+# Creating Mortality Table
+
+## Male, Non-Smoker, Low Risk
+```{r, warning=F}
+# Load the survival package
+library(survival)
+
+# Define ages for which to calculate mortality rates
+ages <- 1:120
+
+# Define covariate values (e.g., male = 0/1, smoker = 0/1, underwriting risk value)
+male <- 1 # 1 for male, 0 for female
+smoker <- 0  # 1 for smoker, 0 for non-smoker
+underwriting_risk <- 0  # 0 for very low risk/low risk, 1 for moderate risk/high risk
+
+# Fit Cox PH model
+cox_model <- coxph(Surv(time_in_days, event) ~ age + male + smoker + risk, data = final_inforce)
+
+# Estimate survival probabilities
+surv_object <- survfit(cox_model)
+
+# Extract non-standardized baseline hazard
+baseline_hazard_nonstandardized <- -diff(surv_object$surv) / diff(surv_object$time)
+
+# Initialize vector to store mortality rates
+mortality_rates <- rep(NA, length(ages))
+
+# Calculate mortality rates for each age
+for (i in 1:length(ages)) {
+  age <- ages[i]
+  # Calculate hazard for the current age and covariate values
+  hazard_age <- baseline_hazard_nonstandardized * age * exp(coef(cox_model)['age'] * age +
+                                                            coef(cox_model)['male'] * male +
+                                                            coef(cox_model)['smoker'] * smoker +
+                                                            coef(cox_model)['risk'] * underwriting_risk)
+  # Scale the hazard rate using a logistic function to ensure gradual increase
+  scaled_hazard_age <- hazard_age / (1 + exp(-(age - 85) / 5))  # Adjust parameters as needed
+  
+  # Calculate mortality rate
+  mortality_rates[i] <- 1 - exp(-scaled_hazard_age)
+}
+
+# Adjust the mortality rate at the last age to ensure it reaches 1
+mortality_rates[length(ages)] <- 1
+
+# Create mortality table
+Male_NS_LR <- data.frame(Age = ages, Male_NS_LR = mortality_rates)
+
+Male_NS_LR <- format(Male_NS_LR, scientific = FALSE)
+
+```
+
+## Male, Non-Smoker, High Risk
+```{r, warning=F}
+# Load the survival package
+library(survival)
+
+# Define ages for which to calculate mortality rates
+ages <- 1:120
+
+# Define covariate values (e.g., male = 0/1, smoker = 0/1, underwriting risk value)
+male <- 1  # 1 for male, 0 for female
+smoker <- 0  # 1 for smoker, 0 for non-smoker
+underwriting_risk <- 1  # 0 for very low risk/low risk, 1 for moderate risk/high risk
+
+# Fit Cox PH model
+cox_model <- coxph(Surv(time_in_days, event) ~ age + male + smoker + risk, data = final_inforce)
+
+# Estimate survival probabilities
+surv_object <- survfit(cox_model)
+
+# Extract non-standardized baseline hazard
+baseline_hazard_nonstandardized <- -diff(surv_object$surv) / diff(surv_object$time)
+
+# Initialize vector to store mortality rates
+mortality_rates <- rep(NA, length(ages))
+
+# Calculate mortality rates for each age
+for (i in 1:length(ages)) {
+  age <- ages[i]
+  # Calculate hazard for the current age and covariate values
+  hazard_age <- baseline_hazard_nonstandardized * age * exp(coef(cox_model)['age'] * age +
+                                                            coef(cox_model)['male'] * male +
+                                                            coef(cox_model)['smoker'] * smoker +
+                                                            coef(cox_model)['risk'] * underwriting_risk)
+  # Scale the hazard rate using a logistic function to ensure gradual increase
+  scaled_hazard_age <- hazard_age / (1 + exp(-(age - 85) / 5))  # Adjust parameters as needed
+  
+  # Calculate mortality rate
+  mortality_rates[i] <- 1 - exp(-scaled_hazard_age)
+}
+
+# Adjust the mortality rate at the last age to ensure it reaches 1
+mortality_rates[length(ages)] <- 1
+
+# Create mortality table
+Male_NS_HR <- data.frame(Age = ages, Male_NS_HR = mortality_rates)
+
+Male_NS_HR <- format(Male_NS_HR, scientific = FALSE)
+
+```
+
+## Male, Smoker, Low Risk
+```{r, warning=F}
+# Load the survival package
+library(survival)
+
+# Define ages for which to calculate mortality rates
+ages <- 1:120
+
+# Define covariate values (e.g., male = 0/1, smoker = 0/1, underwriting risk value)
+male <- 1  # 1 for male, 0 for female
+smoker <- 1  # 1 for smoker, 0 for non-smoker
+underwriting_risk <- 0  # 0 for very low risk/low risk, 1 for moderate risk/high risk
+
+# Fit Cox PH model
+cox_model <- coxph(Surv(time_in_days, event) ~ age + male + smoker + risk, data = final_inforce)
+
+# Estimate survival probabilities
+surv_object <- survfit(cox_model)
+
+# Extract non-standardized baseline hazard
+baseline_hazard_nonstandardized <- -diff(surv_object$surv) / diff(surv_object$time)
+
+# Initialize vector to store mortality rates
+mortality_rates <- rep(NA, length(ages))
+
+# Calculate mortality rates for each age
+for (i in 1:length(ages)) {
+  age <- ages[i]
+  # Calculate hazard for the current age and covariate values
+  hazard_age <- baseline_hazard_nonstandardized * age * exp(coef(cox_model)['age'] * age +
+                                                            coef(cox_model)['male'] * male +
+                                                            coef(cox_model)['smoker'] * smoker +
+                                                            coef(cox_model)['risk'] * underwriting_risk)
+  # Scale the hazard rate using a logistic function to ensure gradual increase
+  scaled_hazard_age <- hazard_age / (1 + exp(-(age - 85) / 5))  # Adjust parameters as needed
+  
+  # Calculate mortality rate
+  mortality_rates[i] <- 1 - exp(-scaled_hazard_age)
+}
+
+# Adjust the mortality rate at the last age to ensure it reaches 1
+mortality_rates[length(ages)] <- 1
+
+# Create mortality table
+Male_S_LR <- data.frame(Age = ages, Male_S_LR = mortality_rates)
+
+Male_S_LR <- format(Male_S_LR, scientific = FALSE)
+
+```
+
+## Male, Smoker, High Risk
+```{r, warning=F}
+# Load the survival package
+library(survival)
+
+# Define ages for which to calculate mortality rates
+ages <- 1:120
+
+# Define covariate values (e.g., male = 0/1, smoker = 0/1, underwriting risk value)
+male <- 1  # 1 for male, 0 for female
+smoker <- 1  # 1 for smoker, 0 for non-smoker
+underwriting_risk <- 1  # 0 for very low risk/low risk, 1 for moderate risk/high risk
+
+# Fit Cox PH model
+cox_model <- coxph(Surv(time_in_days, event) ~ age + male + smoker + risk, data = final_inforce)
+
+# Estimate survival probabilities
+surv_object <- survfit(cox_model)
+
+# Extract non-standardized baseline hazard
+baseline_hazard_nonstandardized <- -diff(surv_object$surv) / diff(surv_object$time)
+
+# Initialize vector to store mortality rates
+mortality_rates <- rep(NA, length(ages))
+
+# Calculate mortality rates for each age
+for (i in 1:length(ages)) {
+  age <- ages[i]
+  # Calculate hazard for the current age and covariate values
+  hazard_age <- baseline_hazard_nonstandardized * age * exp(coef(cox_model)['age'] * age +
+                                                            coef(cox_model)['male'] * male +
+                                                            coef(cox_model)['smoker'] * smoker +
+                                                            coef(cox_model)['risk'] * underwriting_risk)
+  # Scale the hazard rate using a logistic function to ensure gradual increase
+  scaled_hazard_age <- hazard_age / (1 + exp(-(age - 85) / 5))  # Adjust parameters as needed
+  
+  # Calculate mortality rate
+  mortality_rates[i] <- 1 - exp(-scaled_hazard_age)
+}
+
+# Adjust the mortality rate at the last age to ensure it reaches 1
+mortality_rates[length(ages)] <- 1
+
+# Create mortality table
+Male_S_HR <- data.frame(Age = ages, Male_S_HR = mortality_rates)
+
+Male_S_HR <- format(Male_S_HR, scientific = FALSE)
+
+```
+
+## Female, Non-Smoker, Low Risk
+```{r, warning=F}
+# Load the survival package
+library(survival)
+
+# Define ages for which to calculate mortality rates
+ages <- 1:120
+
+# Define covariate values (e.g., male = 0/1, smoker = 0/1, underwriting risk value)
+male <- 0  # 1 for male, 0 for female
+smoker <- 0  # 1 for smoker, 0 for non-smoker
+underwriting_risk <- 0  # 0 for very low risk/low risk, 1 for moderate risk/high risk
+
+# Fit Cox PH model
+cox_model <- coxph(Surv(time_in_days, event) ~ age + male + smoker + risk, data = final_inforce)
+
+# Estimate survival probabilities
+surv_object <- survfit(cox_model)
+
+# Extract non-standardized baseline hazard
+baseline_hazard_nonstandardized <- -diff(surv_object$surv) / diff(surv_object$time)
+
+# Initialize vector to store mortality rates
+mortality_rates <- rep(NA, length(ages))
+
+# Calculate mortality rates for each age
+for (i in 1:length(ages)) {
+  age <- ages[i]
+  # Calculate hazard for the current age and covariate values
+  hazard_age <- baseline_hazard_nonstandardized * age * exp(coef(cox_model)['age'] * age +
+                                                            coef(cox_model)['male'] * male +
+                                                            coef(cox_model)['smoker'] * smoker +
+                                                            coef(cox_model)['risk'] * underwriting_risk)
+  # Scale the hazard rate using a logistic function to ensure gradual increase
+  scaled_hazard_age <- hazard_age / (1 + exp(-(age - 85) / 5))  # Adjust parameters as needed
+  
+  # Calculate mortality rate
+  mortality_rates[i] <- 1 - exp(-scaled_hazard_age)
+}
+
+# Adjust the mortality rate at the last age to ensure it reaches 1
+mortality_rates[length(ages)] <- 1
+
+# Create mortality table
+Female_NS_LR <- data.frame(Age = ages, Female_NS_LR = mortality_rates)
+
+Female_NS_LR <- format(Female_NS_LR, scientific = FALSE)
+
+```
+
+## Female, Non-Smoker, High Risk
+```{r, warning=F}
+# Load the survival package
+library(survival)
+
+# Define ages for which to calculate mortality rates
+ages <- 1:120
+
+# Define covariate values (e.g., male = 0/1, smoker = 0/1, underwriting risk value)
+male <- 0  # 1 for male, 0 for female
+smoker <- 0  # 1 for smoker, 0 for non-smoker
+underwriting_risk <- 1  # 0 for very low risk/low risk, 1 for moderate risk/high risk
+
+# Fit Cox PH model
+cox_model <- coxph(Surv(time_in_days, event) ~ age + male + smoker + risk, data = final_inforce)
+
+# Estimate survival probabilities
+surv_object <- survfit(cox_model)
+
+# Extract non-standardized baseline hazard
+baseline_hazard_nonstandardized <- -diff(surv_object$surv) / diff(surv_object$time)
+
+# Initialize vector to store mortality rates
+mortality_rates <- rep(NA, length(ages))
+
+# Calculate mortality rates for each age
+for (i in 1:length(ages)) {
+  age <- ages[i]
+  # Calculate hazard for the current age and covariate values
+  hazard_age <- baseline_hazard_nonstandardized * age * exp(coef(cox_model)['age'] * age +
+                                                            coef(cox_model)['male'] * male +
+                                                            coef(cox_model)['smoker'] * smoker +
+                                                            coef(cox_model)['risk'] * underwriting_risk)
+  # Scale the hazard rate using a logistic function to ensure gradual increase
+  scaled_hazard_age <- hazard_age / (1 + exp(-(age - 85) / 5))  # Adjust parameters as needed
+  
+  # Calculate mortality rate
+  mortality_rates[i] <- 1 - exp(-scaled_hazard_age)
+}
+
+# Adjust the mortality rate at the last age to ensure it reaches 1
+mortality_rates[length(ages)] <- 1
+
+# Create mortality table
+Female_NS_HR <- data.frame(Age = ages, Female_NS_HR = mortality_rates)
+
+Female_NS_HR <- format(Female_NS_HR, scientific = FALSE)
+
+```
+
+## Female, Smoker, Low Risk
+```{r, warning=F}
+# Load the survival package
+library(survival)
+
+# Define ages for which to calculate mortality rates
+ages <- 1:120
+
+# Define covariate values (e.g., male = 0/1, smoker = 0/1, underwriting risk value)
+male <- 0  # 1 for male, 0 for female
+smoker <- 1  # 1 for smoker, 0 for non-smoker
+underwriting_risk <- 0  # 0 for very low risk/low risk, 1 for moderate risk/high risk
+
+# Fit Cox PH model
+cox_model <- coxph(Surv(time_in_days, event) ~ age + male + smoker + risk, data = final_inforce)
+
+# Estimate survival probabilities
+surv_object <- survfit(cox_model)
+
+# Extract non-standardized baseline hazard
+baseline_hazard_nonstandardized <- -diff(surv_object$surv) / diff(surv_object$time)
+
+# Initialize vector to store mortality rates
+mortality_rates <- rep(NA, length(ages))
+
+# Calculate mortality rates for each age
+for (i in 1:length(ages)) {
+  age <- ages[i]
+  # Calculate hazard for the current age and covariate values
+  hazard_age <- baseline_hazard_nonstandardized * age * exp(coef(cox_model)['age'] * age +
+                                                            coef(cox_model)['male'] * male +
+                                                            coef(cox_model)['smoker'] * smoker +
+                                                            coef(cox_model)['risk'] * underwriting_risk)
+  # Scale the hazard rate using a logistic function to ensure gradual increase
+  scaled_hazard_age <- hazard_age / (1 + exp(-(age - 85) / 5))  # Adjust parameters as needed
+  
+  # Calculate mortality rate
+  mortality_rates[i] <- 1 - exp(-scaled_hazard_age)
+}
+
+# Adjust the mortality rate at the last age to ensure it reaches 1
+mortality_rates[length(ages)] <- 1
+
+# Create mortality table
+Female_S_LR <- data.frame(Age = ages, Female_S_LR = mortality_rates)
+
+Female_S_LR <- format(Female_S_LR, scientific = FALSE)
+
+```
+
+## Female, Smoker, High Risk
+```{r, warning=F}
+# Load the survival package
+library(survival)
+
+# Define ages for which to calculate mortality rates
+ages <- 1:120
+
+# Define covariate values (e.g., male = 0/1, smoker = 0/1, underwriting risk value)
+male <- 0  # 1 for male, 0 for female
+smoker <- 1  # 1 for smoker, 0 for non-smoker
+underwriting_risk <- 1  # 0 for very low risk/low risk, 1 for moderate risk/high risk
+
+# Fit Cox PH model
+cox_model <- coxph(Surv(time_in_days, event) ~ age + male + smoker + risk, data = final_inforce)
+
+# Estimate survival probabilities
+surv_object <- survfit(cox_model)
+
+# Extract non-standardized baseline hazard
+baseline_hazard_nonstandardized <- -diff(surv_object$surv) / diff(surv_object$time)
+
+# Initialize vector to store mortality rates
+mortality_rates <- rep(NA, length(ages))
+
+# Calculate mortality rates for each age
+for (i in 1:length(ages)) {
+  age <- ages[i]
+  # Calculate hazard for the current age and covariate values
+  hazard_age <- baseline_hazard_nonstandardized * age * exp(coef(cox_model)['age'] * age +
+                                                            coef(cox_model)['male'] * male +
+                                                            coef(cox_model)['smoker'] * smoker +
+                                                            coef(cox_model)['risk'] * underwriting_risk)
+  # Scale the hazard rate using a logistic function to ensure gradual increase
+  scaled_hazard_age <- hazard_age / (1 + exp(-(age - 85) / 5))  # Adjust parameters as needed
+  
+  # Calculate mortality rate
+  mortality_rates[i] <- 1 - exp(-scaled_hazard_age)
+}
+
+# Adjust the mortality rate at the last age to ensure it reaches 1
+mortality_rates[length(ages)] <- 1
+
+# Create mortality table
+Female_S_HR <- data.frame(Age = ages, Female_S_HR = mortality_rates)
+
+Female_S_HR <- format(Female_S_HR, scientific = FALSE)
+
+```
+
+# Join Mortality Tables
+
+```{r}
+full_mortality_table <- Male_NS_LR %>%
+              left_join(Male_NS_HR, by = 'Age') %>%
+              left_join(Male_S_LR, by = 'Age') %>%
+              left_join(Male_S_HR, by = 'Age') %>%
+              left_join(Female_NS_LR, by = 'Age') %>%
+              left_join(Female_NS_HR, by = 'Age') %>%
+              left_join(Female_S_LR, by = 'Age') %>%
+              left_join(Female_S_HR, by = 'Age') 
+```
+
+```{r}
+write_xlsx(full_mortality_table, "/Users/sarahkircher/Documents/2024 SOA Case Comp/SOACaseComp2024/full_mortality_table.xlsx")
+```
+
+
+
+
+
+
+
+
+
