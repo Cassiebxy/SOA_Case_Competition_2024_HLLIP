@@ -1,0 +1,90 @@
+---
+title: "Case studyEDA"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+date: "2024-01-27"
+---
+```{r}
+# Set up
+library(dplyr)
+
+data <- read.csv("~/Desktop/2024 Case Study Challenge/2024-srcsc-superlife-inforce-dataset.csv")
+View(data)
+```
+
+```{r}
+smoking_related <- subset(data, Smoker.Status == "S")
+
+# Count the number of smoking-related policies
+number_of_policies <- nrow(smoking_related)
+
+number_of_policies
+```
+Number of policies that policyholder smoked is 61740.
+
+```{r}
+
+# Filter data for Smoker.Status = 'S'
+smokers_data <- subset(data, Smoker.Status == "S")
+
+# Calculate the count of each Cause of Death
+cause_counts <- table(smokers_data$Cause.of.Death)
+
+# Convert counts to proportions
+cause_percentages <- prop.table(cause_counts) * 100
+
+# Sort in descending order
+sorted_causes <- sort(cause_percentages, decreasing = TRUE)
+
+sorted_causes
+```
+I00-I99 is Diseases of the circulatory system. it occupies 55% of the cause of death among the policyholder who smoked.
+I00-I99 include:    
+I00-I02 Acute rheumatic fever   
+I05-I09 Chronic rheumatic heart diseases    
+I10-I15 Hypertensive diseases   
+I20-I25 Ischaemic heart diseases    
+I26-I28 Pulmonary heart disease and diseases of pulmonary circulation   
+I30-I52 Other forms of heart disease    
+I60-I69 Cerebrovascular diseases    
+I70-I79 Diseases of arteries, arterioles and capillaries    
+I80-I89 Diseases of veins, lymphatic vessels and lymph nodes, not elsewhere classified    
+I95-I99 Other and unspecified disorders of the circulatory system   
+
+Thus, from the interventions table, if we want to focus on smokers, we can choose:    
+Heart Health Screenings          
+Chronic Disease Management (these two are highly related to smokers)      
+Incentives for Preventive Screenings  
+Holistic Health Assessments        
+
+```{r}
+# Filter for Smoker.Status = 'S'
+smokers_data <- subset(data, Smoker.Status == "S")
+
+# Create a contingency table
+underwriting_result <- table(smokers_data$Underwriting.Class)
+urban_rural_result <- table(smokers_data$Urban.vs.Rural)
+
+underwriting_result
+urban_rural_result
+
+```
+```{r}
+# Filter for rows where a death has occurred
+deaths_data <- 
+  data%>% 
+  filter(Death.indicator == 1)
+
+# Group by region and cause of death, then count occurrences
+death_causes_by_region <- 
+  deaths_data %>%
+  group_by(Region, Cause.of.Death) %>%
+  summarise(Deaths = n(), .groups = 'drop')
+
+
+death_causes_by_region
+
+```
+

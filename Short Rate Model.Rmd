@@ -1,0 +1,181 @@
+---
+title: "SOA-Short Rate Model"
+output: html_document
+date: "2024-02-25"
+---
+
+```{r}
+# Set up
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(stats)
+library(readxl)
+
+graphics.off()  # clear all graphs
+rm(list = ls()) # remove all files from your workspace
+
+economic_data <- read_excel("~/Desktop/2024 Case Study Challenge/srcsc-2024-lumaria-economic-data.xlsx")
+glimpse(economic_data)
+```
+
+```{r}
+# Change Variables Names
+names(economic_data) <- c("Year", "inflation", "overnight_rate", "one_year_spot_rate",  "ten_year_spot_rate")
+
+# Multiply 100 to the inflation, overnight right, one year spot rate, and ten year spot, rate
+economic_data <- economic_data %>%
+  mutate(inflation = inflation * 100,
+         overnight_rate = overnight_rate * 100,
+         one_year_spot_rate = one_year_spot_rate * 100,
+         ten_year_spot_rate = ten_year_spot_rate * 100)
+
+glimpse(economic_data)
+```
+
+
+```{r}
+# Define the CIR function
+
+simulate_CIR <- function(T, N, r0, theta, kappa, sigma) {
+  dt <- T/N
+  rates <- numeric(N)
+  rates[1] <- r0
+  
+  for (i in 2:N) {
+    # Calculate the Wiener process increment
+    dw <- rnorm(1, mean = 0, sd = sqrt(dt))
+    # Euler-Maruyama approximation for CIR
+    rates[i] <- rates[i - 1] + kappa * (theta - rates[i - 1]) * dt + sigma * sqrt(rates[i - 1]) * dw
+    # Ensure the rate doesn't go negative
+    rates[i] <- max(rates[i], 0)
+  }
+  
+  return(rates)
+}
+```
+
+```{r}
+# Set the simulation parameters
+T <- 25   # 25 years
+N <- 252 * T  # Daily simulation
+r0 <- 0.07  # Initial rate estimate, 1 year spot rate in 2023
+theta <- 0.05  # Long-term mean rate
+kappa <- 0.1   # Speed of mean reversion
+sigma <- 0.02  # Volatility
+
+```
+
+
+```{r}
+# Simulate the three rates
+set.seed(123) # For reproducibility
+#overnight_rates <- simulate_CIR(T, N, r0, theta, kappa, sigma)
+#overnight_rates
+
+one_year_rates <- simulate_CIR(T, N, r0, theta, kappa, sigma)
+#one_year_rates
+
+#ten_year_rates <- simulate_CIR(T, N, r0, theta, kappa, sigma)
+#ten_year_rates
+```
+
+```{r}
+# total_mean_overnight <- mean(overnight_rates)
+# total_max_overnight <- max(overnight_rates)
+# total_min_overnight <- min(overnight_rates)
+
+total_mean_one_year <- mean(one_year_rates)
+total_max_one_year <- max(one_year_rates)
+total_min_one_year <- min(one_year_rates)
+
+total_mean_one_year
+total_max_one_year
+total_min_one_year
+
+#total_mean_ten_year <- mean(ten_year_rates)
+#total_max_ten_year <- max(ten_year_rates)
+#total_min_ten_year <- min(ten_year_rates)
+```
+
+
+
+```{r}
+# Create a data frame for plotting
+time_seq <- seq(0, T, length.out = N)
+rates_data <- data.frame(
+  Time = rep(time_seq, 3),
+  Rate = c(overnight_rates, one_year_rates, ten_year_rates),
+  Type = factor(rep(c("Overnight Rate", "1-Year Rate", "10-Year Rate"), each = N))
+)
+
+# Plot for Overnight Rate
+ggplot(rates_data[rates_data$Type == "Overnight Rate", ], aes(x = Time, y = Rate)) +
+  geom_line(color = "skyblue") +
+  ggtitle("Simulated CIR Path for Overnight Rate") +
+  xlab("Time (Years)") +
+  ylab("Interest Rate")
+```
+
+```{r}
+# Plot for 1-Year Rate for 25 years
+ggplot(rates_data[rates_data$Type == "1-Year Rate", ], aes(x = Time, y = Rate)) +
+  geom_line(color = "pink") +
+  ggtitle("Simulated CIR Path for 1-Year Rate for the future 25 years") +
+  xlab("Time (Years)") +
+  ylab("Interest Rate")
+```
+
+```{r}
+# Predict one year spot rate for 5 years
+T2 <- 5  # Simulation for 5 years
+N2 <- 252 * T  # Daily simulation for 5 years
+
+# simulate the one_year_rates for 5 years
+set.seed(123) # For reproducibility
+one_year_rates_5yr <- simulate_CIR(T2, N2, r0, theta, kappa, sigma)
+
+# Create a data frame for plotting the 5-year simulation of one_year_spot_rate
+time_seq_5yr <- seq(0, T2, length.out = N)
+rates_data_5yr <- data.frame(
+  Time = time_seq_5yr,
+  Rate = one_year_rates_5yr,
+  Type = "1-Year Rate"
+)
+
+# Plot for 1-Year Rate for 5 years
+ggplot(rates_data_5yr, aes(x = Time, y = Rate)) +
+  geom_line(color = "orchid") +
+  ggtitle("Simulated CIR Path for 1-Year Rate for the Next 5 Years") +
+  xlab("Time (Years)") +
+  ylab("Interest Rate") +
+  theme_minimal()
+```
+
+
+```{r}
+# Plot ten year spot rate for 25-Year Rate
+ggplot(rates_data[rates_data$Type == "10-Year Rate", ], aes(x = Time, y = Rate)) +
+  geom_line(color = "yellow") +
+  ggtitle("Simulated CIR Path for 25-Year Rate") +
+  xlab("Time (Years)") +
+  ylab("Interest Rate")
+```
+
+```{r}
+# Combined graph
+sim_data <- data.frame(
+  Time = rep(seq(0, T, length.out = N), 3),
+  Rate = c(overnight_rates, one_year_rates, ten_year_rates),
+  Type = factor(rep(c("Overnight Rate", "1-Year Rate", "10-Year Rate"), each = N))
+)
+
+ggplot(sim_data, aes(x = Time, y = Rate, color = Type)) +
+  geom_line() +
+  labs(title = "Simulated CIR Paths", x = "Time (Years)", y = "Rates") +
+  theme_minimal() +
+  scale_color_manual(values = c("Overnight Rate" = "skyblue", "1-Year Rate" = "pink", "10-Year Rate" = "yellow"))
+
+```
+
+
