@@ -16,6 +16,6 @@ With the vision to revolutionize Lumaria's life insurance landscape, SuperLife w
 
 Mortality Table: 
 
-Interest Rate:
+Interest Rate: Short Rate Model.Rmd
 
-Premium Calculation:
+Premium Calculation: Short Rate Model.Rmd
